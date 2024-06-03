@@ -17,11 +17,13 @@ class TripletDataset(torch.utils.data.Dataset):
         self.transform = transform
         self.model = model
         self.neg_size = neg_size
-        self.k = 5
+        self.k = 2 # proposed hyperparameter for calculating the sample size of negative elements
+        self.quantile_level = 0.5 # # quantile level is a hyperparameter
         self.dist_func = lambda x, y: torch.cdist(x, y)
 
         if self.strategy in ('hard-negative', 'semi-hard-negative'):
             assert self.model is not None
+            assert len(self.test_path) == 2
             assert self.test_path is not None
 
     def _get_pairs(self):
@@ -51,13 +53,13 @@ class TripletDataset(torch.utils.data.Dataset):
         '''
          Calculates the size of the negative elements.
          Calculated by the probabilistic number of negative items that are
-          less than the first quartile of distances to positive items
+          less than the chosen quantile level of distances to positive items
         '''
         distances = test(self.model, self.test_path, self.test_dataset_path, self.transform, self.dist_func)
-        pos_quartile = np.nanquantile(np.where(distances[:, 1] == 0, distances[:, 0], np.nan), 0.25)
-        negatives_mask = np.where((distances[:, 1] == 1) & (distances[:, 1] < pos_quartile), distances[:, 0], np.nan)
+        pos_quantile = np.nanquantile(np.where(distances[:, 1] == 0, distances[:, 0], np.nan), self.quantile_level)
+        negatives_mask = np.where((distances[:, 1] == 1) & (distances[:, 0] < pos_quantile), distances[:, 0], np.nan)
         neg_size = np.count_nonzero(~np.isnan(negatives_mask))
-        neg_all_size = np.count_nonzero(~np.isnan(np.where(distances[:, 1] == 0, distances[:, 0], np.nan)))
+        neg_all_size = np.count_nonzero(~np.isnan(np.where(distances[:, 1] == 1, distances[:, 0], np.nan)))
         self.neg_size = self.k * neg_all_size // neg_size
 
     def random_mining(self, person):
